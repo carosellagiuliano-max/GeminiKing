@@ -12,8 +12,6 @@ import type {
   ServicesRow,
   StaffRow,
 } from '@/lib/supabase/types';
-import { createICSEvent } from '@/lib/ics';
-import { sendBookingConfirmation } from '@/lib/mail';
 import { getSiteUrl } from '@/lib/url';
 import { createSumUpCheckoutLink } from '@/lib/sumup';
 import { nanoid } from 'nanoid';
@@ -273,22 +271,6 @@ export async function createBooking(input: z.infer<typeof bookingSchema>): Promi
       .update({ sumup_checkout_id: sumupCheckoutUrl })
       .eq('id', appointment.id);
   }
-
-  const ics = createICSEvent({
-    appointment,
-    service,
-    staff: staffMember as StaffRow,
-    location,
-  });
-
-  await sendBookingConfirmation({
-    appointment,
-    service,
-    staff: staffMember as StaffRow,
-    customer: payload.customer,
-    location,
-    ics,
-  });
 
   await supabase.from('analytics_events').insert({
     event_name: 'booking.created',

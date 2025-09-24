@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { ContactForm } from './contact-form';
 
 export const metadata: Metadata = {
   title: 'Kontakt',
@@ -37,59 +38,7 @@ export default function ContactPage() {
           </div>
         </section>
         <section className="space-y-6">
-          <form className="space-y-4 rounded-3xl border border-neutral-200 bg-white/90 p-6 shadow-sm">
-            <div>
-              <label className="text-sm font-medium text-neutral-700" htmlFor="name">
-                Name
-              </label>
-              <input
-                id="name"
-                name="name"
-                type="text"
-                placeholder="Vor- und Nachname"
-                required
-                className="mt-1 w-full rounded-xl border border-neutral-300 px-3 py-2 text-sm shadow-sm focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-200"
-              />
-            </div>
-            <div>
-              <label className="text-sm font-medium text-neutral-700" htmlFor="email">
-                E-Mail
-              </label>
-              <input
-                id="email"
-                name="email"
-                type="email"
-                placeholder="name@example.ch"
-                required
-                className="mt-1 w-full rounded-xl border border-neutral-300 px-3 py-2 text-sm shadow-sm focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-200"
-              />
-            </div>
-            <div>
-              <label className="text-sm font-medium text-neutral-700" htmlFor="message">
-                Nachricht
-              </label>
-              <textarea
-                id="message"
-                name="message"
-                rows={5}
-                placeholder="Wie können wir unterstützen?"
-                className="mt-1 w-full rounded-xl border border-neutral-300 px-3 py-2 text-sm shadow-sm focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-200"
-              />
-            </div>
-            <button
-              type="submit"
-              className="w-full rounded-full bg-primary-600 px-6 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-primary-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-600"
-            >
-              Anfrage senden
-            </button>
-            <p className="text-xs text-neutral-400">
-              Mit dem Absenden akzeptierst du unsere{' '}
-              <a href="/legal/datenschutz" className="underline">
-                Datenschutzbestimmungen
-              </a>
-              .
-            </p>
-          </form>
+          <ContactForm />
         </section>
       </div>
     </div>

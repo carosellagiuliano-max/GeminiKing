@@ -1,4 +1,5 @@
 import type { Handler } from '@netlify/functions';
+import { sendAppointmentConfirmationEmail } from '../../lib/mail';
 import { fetchSumUpCheckout } from '../../lib/sumup';
 import { createServiceClient } from './_shared/supabase';
 
@@ -8,7 +9,7 @@ export const handler: Handler = async () => {
   const supabase = createServiceClient();
   const { data: appointments = [], error } = await supabase
     .from('appointments')
-    .select('id, sumup_checkout_id, payment_status, status, metadata')
+    .select('id, sumup_checkout_id, payment_status, status, confirmed_at')
     .not('sumup_checkout_id', 'is', null)
     .eq('payment_status', 'UNPAID');
 
@@ -24,10 +25,20 @@ export const handler: Handler = async () => {
     try {
       const checkout = await fetchSumUpCheckout(appointment.sumup_checkout_id);
       if (PAID_STATES.includes(checkout.status.toUpperCase())) {
+        if (appointment.status === 'CONFIRMED' && appointment.payment_status === 'PAID') {
+          continue;
+        }
+
         await supabase
           .from('appointments')
-          .update({ payment_status: 'PAID', status: appointment.status === 'PENDING' ? 'CONFIRMED' : appointment.status })
+          .update({
+            payment_status: 'PAID',
+            status: appointment.status === 'PENDING' ? 'CONFIRMED' : appointment.status,
+            confirmed_at: appointment.confirmed_at ?? new Date().toISOString(),
+          })
           .eq('id', appointment.id);
+
+        await sendAppointmentConfirmationEmail(appointment.id);
 
         await supabase.from('webhook_logs').insert({
           provider: 'sumup',

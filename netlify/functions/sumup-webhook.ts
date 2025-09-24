@@ -1,4 +1,5 @@
 import type { Handler } from '@netlify/functions';
+import { sendAppointmentConfirmationEmail } from '../../lib/mail';
 import { fetchSumUpCheckout } from '../../lib/sumup';
 import { createServiceClient } from './_shared/supabase';
 
@@ -22,10 +23,28 @@ export const handler: Handler = async (event) => {
     });
 
     if (['PAID', 'SETTLED', 'SUCCESSFUL'].includes(checkout.status.toUpperCase())) {
-      await supabase
+      const { data: appointment } = await supabase
         .from('appointments')
-        .update({ payment_status: 'PAID', status: 'CONFIRMED' })
-        .eq('sumup_checkout_id', checkoutId);
+        .select('id, status, payment_status, confirmed_at')
+        .eq('sumup_checkout_id', checkoutId)
+        .maybeSingle();
+
+      if (appointment && appointment.status === 'CONFIRMED' && appointment.payment_status === 'PAID') {
+        return { statusCode: 200, body: JSON.stringify({ message: 'ok' }) };
+      }
+
+      if (appointment?.id) {
+        await supabase
+          .from('appointments')
+          .update({
+            payment_status: 'PAID',
+            status: 'CONFIRMED',
+            confirmed_at: appointment.confirmed_at ?? new Date().toISOString(),
+          })
+          .eq('id', appointment.id);
+
+        await sendAppointmentConfirmationEmail(appointment.id);
+      }
     }
 
     return { statusCode: 200, body: JSON.stringify({ message: 'ok' }) };

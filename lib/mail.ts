@@ -1,7 +1,9 @@
 import { Resend } from 'resend';
 import { DateTime } from '@/lib/datetime';
-import type { AppointmentRow, LocationRow, ServicesRow, StaffRow } from '@/lib/supabase/types';
 import { formatCurrencyCHF } from '@/lib/datetime';
+import { createICSEvent } from '@/lib/ics';
+import { createSupabaseServiceRoleClient } from '@/lib/supabase/server';
+import type { AppointmentRow, LocationRow, ServicesRow, StaffRow } from '@/lib/supabase/types';
 import { getSiteUrl } from '@/lib/url';
 
 interface BookingMailParams {
@@ -71,6 +73,38 @@ export async function sendBookingConfirmation({
   });
 }
 
+interface ContactMailParams {
+  name: string;
+  email: string;
+  message: string;
+  source?: string;
+}
+
+export async function sendContactRequest({ name, email, message, source }: ContactMailParams) {
+  const client = await ensureClient();
+  if (!client) return;
+  const { resend, from } = client;
+  const to = process.env.CONTACT_INBOX_EMAIL ?? from;
+
+  const safeMessage = message.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+  await resend.emails.send({
+    from: `Salon Excellence <${from}>`,
+    to,
+    subject: `Neue Kontaktanfrage von ${name}`,
+    reply_to: email,
+    html: `
+      <div style="font-family: 'Source Sans Pro', Arial, sans-serif; color: #0f172a;">
+        <h1 style="font-size: 20px; margin-bottom: 12px;">Neue Nachricht über das Kontaktformular</h1>
+        <p><strong>Name:</strong> ${name}</p>
+        <p><strong>E-Mail:</strong> <a href="mailto:${email}">${email}</a></p>
+        ${source ? `<p><strong>Quelle:</strong> ${source}</p>` : ''}
+        <p style="margin-top: 16px; white-space: pre-line;">${safeMessage}</p>
+      </div>
+    `,
+  });
+}
+
 interface ReminderMailParams {
   appointment: AppointmentRow;
   service: ServicesRow;
@@ -104,5 +138,48 @@ export async function sendReminderEmail({ appointment, service, staff, customer,
     to: customer.email,
     subject: `Reminder: ${service.name} am ${start.toFormat('dd.LL.yyyy HH:mm')}`,
     html,
+  });
+}
+
+export async function sendAppointmentConfirmationEmail(appointmentId: string) {
+  const supabase = createSupabaseServiceRoleClient();
+  const { data, error } = await supabase
+    .from('appointments')
+    .select('*, service:services(*), staff:staff(*), location:locations(*), customer:customers(email, preferred_name)')
+    .eq('id', appointmentId)
+    .single();
+
+  if (error || !data) {
+    console.error('Appointment lookup for confirmation failed', { appointmentId, error });
+    return;
+  }
+
+  const { service, staff, location, customer, ...appointmentFields } = data as typeof data & {
+    service: ServicesRow;
+    staff: StaffRow;
+    location: LocationRow;
+    customer: { email: string | null; preferred_name: string | null } | null;
+  };
+
+  const email = customer?.email ?? '';
+  if (!email) {
+    console.warn('Skipping confirmation email due to missing customer email', { appointmentId });
+    return;
+  }
+
+  const preferred = customer?.preferred_name?.trim() ?? email;
+  const [firstName, ...rest] = preferred.split(' ');
+  const lastName = rest.join(' ') || firstName;
+
+  const appointment = appointmentFields as AppointmentRow;
+  const ics = createICSEvent({ appointment, service, staff, location });
+
+  await sendBookingConfirmation({
+    appointment,
+    service,
+    staff,
+    customer: { email, firstName, lastName },
+    location,
+    ics,
   });
 }
