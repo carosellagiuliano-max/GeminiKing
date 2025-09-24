@@ -1,0 +1,23 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light dark;
+}
+
+body {
+  @apply bg-neutral-50 text-neutral-900 antialiased;
+}
+
+a {
+  @apply text-primary-700 underline-offset-2 transition-colors hover:text-primary-500;
+}
+
+.dark body {
+  @apply bg-neutral-900 text-neutral-100;
+}
+
+::selection {
+  @apply bg-primary-200 text-neutral-900;
+}
