@@ -6,7 +6,7 @@ const securityHeaders = [
     value: [
       "default-src 'self'",
       "script-src 'self' 'unsafe-inline' https://js.stripe.com https://checkout.stripe.com",
-      "connect-src 'self' https://api.stripe.com https://m.stripe.network",
+      "connect-src 'self' https://api.stripe.com https://m.stripe.network https://*.supabase.co https://*.supabase.in https://*.supabase.net https://api.sumup.com",
       "img-src 'self' data: blob: https:",
       "style-src 'self' 'unsafe-inline'",
       "frame-src 'self' https://js.stripe.com https://checkout.stripe.com https://*.stripe.com https://*.sumup.com",

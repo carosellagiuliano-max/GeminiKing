@@ -15,7 +15,7 @@ const requestSchema = z.object({
 
 export async function POST(req: Request) {
   const ip = req.headers.get('x-forwarded-for')?.split(',')[0] ?? 'anonymous';
-  const { allowed, remaining, reset, window } = rateLimit(`slots:${ip}`, 60, 60);
+  const { allowed, remaining, reset, window } = await rateLimit(`slots:${ip}`, 60, 60);
   const headers = rateLimitHeaders(60, remaining, reset, window);
   if (!allowed) {
     return new NextResponse(JSON.stringify({ message: 'Too many requests' }), {

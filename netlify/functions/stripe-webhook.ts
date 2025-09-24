@@ -1,5 +1,6 @@
 import type { Handler } from '@netlify/functions';
 import Stripe from 'stripe';
+import { sendAppointmentConfirmationEmail } from '../../lib/mail';
 import { createServiceClient } from './_shared/supabase';
 
 const stripeSecret = process.env.STRIPE_SECRET_KEY;
@@ -36,15 +37,32 @@ export const handler: Handler = async (event) => {
         const appointmentId = session.metadata?.appointmentId;
         if (!appointmentId) break;
 
-        await supabase
+        const { data: existing } = await supabase
+          .from('appointments')
+          .select('id, status, payment_status, confirmed_at')
+          .eq('id', appointmentId)
+          .maybeSingle();
+
+        if (existing && existing.status === 'CONFIRMED' && existing.payment_status === 'PAID') {
+          break;
+        }
+
+        const { error: updateError } = await supabase
           .from('appointments')
           .update({
             payment_status: 'PAID',
             status: 'CONFIRMED',
             stripe_checkout_id: session.id,
             stripe_payment_intent_id: session.payment_intent?.toString() ?? null,
+            confirmed_at: existing?.confirmed_at ?? new Date().toISOString(),
           })
           .eq('id', appointmentId);
+
+        if (updateError) {
+          throw updateError;
+        }
+
+        await sendAppointmentConfirmationEmail(appointmentId);
 
         await supabase.from('webhook_logs').insert({
           provider: 'stripe',
