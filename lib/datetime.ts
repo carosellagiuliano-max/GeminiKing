@@ -47,6 +47,9 @@ export function overlap(intervalA: Interval, intervalB: Interval) {
 }
 
 export function expandInterval(interval: Interval, minutes: number) {
+  if (!interval.start || !interval.end) {
+    throw new Error('Interval boundaries are required to expand the interval.');
+  }
   return Interval.fromDateTimes(
     interval.start.minus(Duration.fromObject({ minutes })),
     interval.end.plus(Duration.fromObject({ minutes })),
@@ -60,13 +63,29 @@ export function roundToSlot(date: DateTime, slotMinutes: number) {
 }
 
 export function isHoliday(date: DateTime, cantonHolidays: string[]) {
-  return cantonHolidays.includes(date.toISODate());
+  return cantonHolidays.includes(toISODateOrThrow(date));
 }
 
 export function formatCurrencyCHF(amountInRappen: number) {
   return new Intl.NumberFormat('de-CH', { style: 'currency', currency: 'CHF' }).format(
     amountInRappen / 100,
   );
+}
+
+export function toISODateOrThrow(date: DateTime) {
+  const iso = date.toISODate();
+  if (!iso) {
+    throw new Error('Failed to serialize DateTime to ISO date string.');
+  }
+  return iso;
+}
+
+export function toISOStringOrThrow(date: DateTime) {
+  const iso = date.toISO();
+  if (!iso) {
+    throw new Error('Failed to serialize DateTime to ISO string.');
+  }
+  return iso;
 }
 
 export { DateTime, Duration, Interval };

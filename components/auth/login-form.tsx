@@ -1,9 +1,9 @@
 'use client';
 
 import { useFormState } from 'react-dom';
-import { loginAction } from '@/app/(auth)/login/actions';
+import { loginAction, type LoginState } from '@/app/(auth)/login/actions';
 
-const initialState = { error: '' };
+const initialState: LoginState = { error: '' };
 
 export function LoginForm({ redirectTo }: { redirectTo?: string }) {
   const [state, formAction] = useFormState(loginAction, initialState);

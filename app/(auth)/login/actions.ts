@@ -5,13 +5,17 @@ import { redirect } from 'next/navigation';
 import { z } from 'zod';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 
+export interface LoginState {
+  error: string;
+}
+
 const loginSchema = z.object({
   email: z.string().email(),
   password: z.string().min(6),
   redirectTo: z.string().optional().default('/portal'),
 });
 
-export async function loginAction(formData: FormData) {
+export async function loginAction(_prevState: LoginState, formData: FormData): Promise<LoginState> {
   const raw = {
     email: formData.get('email'),
     password: formData.get('password'),

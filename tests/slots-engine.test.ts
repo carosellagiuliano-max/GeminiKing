@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DateTime } from '@/lib/datetime';
+import { DateTime, toISOStringOrThrow } from '@/lib/datetime';
 import { computeAvailableSlots, type SlotContext } from '@/lib/slots/engine';
 
 const baseContext: SlotContext = {
@@ -103,8 +103,8 @@ describe('computeAvailableSlots', () => {
         {
           id: 'timeoff-1',
           staff_id: 'staff-1',
-          start_at: DateTime.fromISO('2024-09-03T11:00:00', { zone: 'Europe/Zurich' }).toUTC().toISO(),
-          end_at: DateTime.fromISO('2024-09-03T13:00:00', { zone: 'Europe/Zurich' }).toUTC().toISO(),
+          start_at: toISOStringOrThrow(DateTime.fromISO('2024-09-03T11:00:00', { zone: 'Europe/Zurich' }).toUTC()),
+          end_at: toISOStringOrThrow(DateTime.fromISO('2024-09-03T13:00:00', { zone: 'Europe/Zurich' }).toUTC()),
           reason: null,
           created_at: '',
           updated_at: '',
@@ -130,8 +130,8 @@ describe('computeAvailableSlots', () => {
           customer_id: 'customer-1',
           location_id: 'location-1',
           service_id: 'service-1',
-          start_at: existingStart.toUTC().toISO(),
-          end_at: existingStart.plus({ minutes: 60 }).toUTC().toISO(),
+          start_at: toISOStringOrThrow(existingStart.toUTC()),
+          end_at: toISOStringOrThrow(existingStart.plus({ minutes: 60 }).toUTC()),
           appointment_range: null,
           status: 'CONFIRMED',
           payment_status: 'PAID',

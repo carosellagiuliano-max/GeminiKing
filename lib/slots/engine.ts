@@ -1,4 +1,4 @@
-import { DateTime, Interval } from '@/lib/datetime';
+import { DateTime, Interval, toISODateOrThrow } from '@/lib/datetime';
 import { getCantonHolidaysBetween } from '@/lib/holidays';
 import type {
   AppointmentResourceRow,
@@ -184,7 +184,8 @@ export function computeAvailableSlots(context: SlotContext, request: SlotRequest
     const slotStep = gcd(duration, SLOT_STEP_MINUTES);
 
     for (const day of days) {
-      if (holidayLookup.has(day.toISODate())) {
+      const isoDate = toISODateOrThrow(day);
+      if (holidayLookup.has(isoDate)) {
         continue;
       }
 
