@@ -1,10 +1,11 @@
 import { NextResponse } from 'next/server';
 import { contactSchema } from '@/lib/validation/contact';
 import { rateLimit, rateLimitHeaders } from '@/lib/rate-limit';
+import { extractClientIp } from '@/lib/request/ip';
 import { sendContactRequest } from '@/lib/mail';
 
 export async function POST(req: Request) {
-  const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'anonymous';
+  const ip = extractClientIp(req);
   const { allowed, remaining, reset, window } = await rateLimit(`contact:${ip}`, 3, 60 * 60 * 6);
   const headers = rateLimitHeaders(3, remaining, reset, window);
 

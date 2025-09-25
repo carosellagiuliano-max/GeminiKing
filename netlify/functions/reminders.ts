@@ -5,9 +5,13 @@ import { createServiceClient } from './_shared/supabase';
 
 export const handler: Handler = async () => {
   const supabase = createServiceClient();
-  const now = DateTime.utc();
-  const windowStart = now.plus({ hours: 24 }).startOf('hour');
-  const windowEnd = windowStart.plus({ hours: 24 });
+  const timezone = 'Europe/Zurich';
+  const nowUtc = DateTime.utc();
+  const nowLocal = nowUtc.setZone(timezone);
+  const windowStartLocal = nowLocal.plus({ days: 1 }).startOf('day');
+  const windowEndLocal = windowStartLocal.plus({ days: 1 });
+  const windowStart = windowStartLocal.toUTC();
+  const windowEnd = windowEndLocal.toUTC();
 
   const { data: appointments = [], error } = await supabase
     .from('appointments')
@@ -49,7 +53,7 @@ export const handler: Handler = async () => {
 
     await supabase
       .from('appointments')
-      .update({ metadata: { ...metadata, reminder_sent_at: now.toISO() } })
+      .update({ metadata: { ...metadata, reminder_sent_at: nowUtc.toISO() } })
       .eq('id', appointment.id);
 
     processed += 1;

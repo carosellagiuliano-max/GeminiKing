@@ -83,7 +83,7 @@ async function createStripeCheckout(
   appointment: AppointmentRow,
   service: ServicesRow,
   customer: z.infer<typeof bookingSchema>['customer'],
-): Promise<string> {
+): Promise<{ id: string; url: string }> {
   const secretKey = process.env.STRIPE_SECRET_KEY;
   if (!secretKey) {
     throw new Error('STRIPE_SECRET_KEY ist nicht gesetzt.');
@@ -91,7 +91,7 @@ async function createStripeCheckout(
   const stripe = new Stripe(secretKey, { apiVersion: '2024-06-20' as any });
   const successUrl =
     process.env.STRIPE_SUCCESS_URL ?? `${getSiteUrl()}/booking/success?session_id={CHECKOUT_SESSION_ID}`;
-  const cancelUrl = process.env.STRIPE_CANCEL_URL ?? `${getSiteUrl()}/booking`;
+  const cancelUrl = process.env.STRIPE_CANCEL_URL ?? `${getSiteUrl()}/booking/cancel`;
 
   const session = await stripe.checkout.sessions.create(
     {
@@ -125,11 +125,11 @@ async function createStripeCheckout(
     },
   );
 
-  if (!session.url) {
+  if (!session.url || !session.id) {
     throw new Error('Stripe Checkout URL konnte nicht erzeugt werden.');
   }
 
-  return session.url;
+  return { id: session.id, url: session.url };
 }
 
 async function createSumUpCheckout(
@@ -271,14 +271,14 @@ export async function createBooking(input: z.infer<typeof bookingSchema>): Promi
 
   await persistAppointmentResources(supabase, appointment.id, serviceResources);
 
-  let stripeCheckoutUrl: string | undefined;
+  let stripeCheckout: { id: string; url: string } | undefined;
   let sumupCheckout: { id: string; url: string } | undefined;
 
   if (payload.paymentMethod === 'stripe') {
-    stripeCheckoutUrl = await createStripeCheckout(appointment, service, payload.customer);
+    stripeCheckout = await createStripeCheckout(appointment, service, payload.customer);
     await supabase
       .from('appointments')
-      .update({ stripe_checkout_id: stripeCheckoutUrl })
+      .update({ stripe_checkout_id: stripeCheckout.id })
       .eq('id', appointment.id);
   } else {
     sumupCheckout = await createSumUpCheckout(appointment, service, payload.customer);
@@ -307,7 +307,7 @@ export async function createBooking(input: z.infer<typeof bookingSchema>): Promi
     appointmentId: appointment.id,
     status: normalizedStatus,
     paymentStatus: normalizedPaymentStatus,
-    stripeCheckoutUrl,
+    stripeCheckoutUrl: stripeCheckout?.url,
     sumupCheckoutUrl: sumupCheckout?.url,
   };
 }

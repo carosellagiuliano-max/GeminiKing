@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { DateTime, toISOStringOrThrow } from '@/lib/datetime';
 import { rateLimit, rateLimitHeaders } from '@/lib/rate-limit';
+import { extractClientIp } from '@/lib/request/ip';
 import { computeAvailableSlots } from '@/lib/slots/engine';
 import { createSupabaseServiceRoleClient } from '@/lib/supabase/server';
 import type { StaffServicesRow } from '@/lib/supabase/types';
@@ -14,7 +15,7 @@ const requestSchema = z.object({
 });
 
 export async function POST(req: Request) {
-  const ip = req.headers.get('x-forwarded-for')?.split(',')[0] ?? 'anonymous';
+  const ip = extractClientIp(req);
   const { allowed, remaining, reset, window } = await rateLimit(`slots:${ip}`, 60, 60);
   const headers = rateLimitHeaders(60, remaining, reset, window);
   if (!allowed) {

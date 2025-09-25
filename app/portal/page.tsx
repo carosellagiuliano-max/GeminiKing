@@ -2,7 +2,9 @@ import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 import { DateTime } from '@/lib/datetime';
 import { formatCurrencyCHF } from '@/lib/datetime';
-import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { createSupabaseServerClient, createSupabaseServiceRoleClient } from '@/lib/supabase/server';
+
+export const revalidate = 0;
 
 export const metadata: Metadata = {
   title: 'Portal',
@@ -22,12 +24,40 @@ export default async function PortalPage() {
   const { data: appointments = [] } = await supabase
     .from('appointments')
     .select(
-      `id, start_at, end_at, status, payment_status,
+      `id, staff_id, start_at, end_at, status, payment_status,
       service:services(name, price_chf),
       staff:staff(display_name),
       location:locations(name, street, city, postal_code, timezone)`
     )
     .order('start_at', { ascending: true });
+
+  const staffIds = Array.from(
+    new Set(
+      (appointments as Array<{ staff_id?: string | null }>).map((appointment) => appointment.staff_id).filter((id): id is string =>
+        Boolean(id),
+      ),
+    ),
+  );
+
+  const staffDisplayMap = new Map<string, string>();
+
+  if (staffIds.length > 0) {
+    try {
+      const serviceClient = createSupabaseServiceRoleClient();
+      const { data: staffRows, error: staffError } = await serviceClient
+        .from('staff')
+        .select('id, display_name')
+        .in('id', staffIds);
+
+      if (!staffError && staffRows) {
+        for (const row of staffRows) {
+          staffDisplayMap.set(row.id, row.display_name ?? '');
+        }
+      }
+    } catch (error) {
+      console.warn('Failed to load staff names for portal view', error);
+    }
+  }
 
   const now = DateTime.utc();
   const parsed = (appointments as any[]).map((entry) => ({
@@ -38,7 +68,7 @@ export default async function PortalPage() {
     paymentStatus: entry.payment_status as string,
     service: entry.service?.name as string,
     amount: entry.service?.price_chf as number,
-    staff: entry.staff?.display_name as string,
+    staff: (entry.staff?.display_name as string | undefined) ?? staffDisplayMap.get(entry.staff_id ?? '') ?? 'Wird zugewiesen',
     location: entry.location,
   }));
 
