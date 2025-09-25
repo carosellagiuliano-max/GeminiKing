@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { createMiddlewareClient } from '@supabase/ssr';
-import type { Database } from '@/lib/supabase/types';
+import { createSupabaseMiddlewareClient } from '@/lib/supabase/server';
 
 export async function middleware(req: NextRequest) {
   const res = NextResponse.next();
@@ -12,7 +11,7 @@ export async function middleware(req: NextRequest) {
     return res;
   }
 
-  const supabase = createMiddlewareClient<Database>({ req, res }, { supabaseUrl, supabaseKey: anonKey });
+  const supabase = createSupabaseMiddlewareClient(req, res);
   const {
     data: { session },
   } = await supabase.auth.getSession();

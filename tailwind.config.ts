@@ -1,6 +1,15 @@
-import type { Config } from 'tailwindcss';
+type TailwindConfig = {
+  content: string[];
+  darkMode?: 'media' | 'class' | string;
+  theme: {
+    extend?: {
+      colors?: Record<string, unknown>;
+    };
+  };
+  plugins: unknown[];
+};
 
-export default {
+const config: TailwindConfig = {
   content: [
     './app/**/*.{js,ts,jsx,tsx,mdx}',
     './components/**/*.{js,ts,jsx,tsx,mdx}',
@@ -19,7 +28,7 @@ export default {
           600: '#7c3aed',
           700: '#6d28d9',
           800: '#5b21b6',
-          900: '#4c1d95'
+          900: '#4c1d95',
         },
         neutral: {
           50: '#f9fafb',
@@ -31,10 +40,12 @@ export default {
           600: '#4b5563',
           700: '#374151',
           800: '#1f2937',
-          900: '#111827'
-        }
-      }
-    }
+          900: '#111827',
+        },
+      },
+    },
   },
   plugins: [],
-} satisfies Config;
+};
+
+export default config;

@@ -1,4 +1,4 @@
-import ical from 'ical-generator';
+import ical, { ICalAlarmType, ICalCalendarMethod } from 'ical-generator';
 import { DateTime } from '@/lib/datetime';
 import type { AppointmentRow, LocationRow, ServicesRow, StaffRow } from '@/lib/supabase/types';
 
@@ -29,6 +29,8 @@ export function createICSEvent({ appointment, service, staff, location }: ICSEve
   const start = DateTime.fromISO(appointment.start_at, { zone: 'utc' }).setZone(location.timezone);
   const end = DateTime.fromISO(appointment.end_at, { zone: 'utc' }).setZone(location.timezone);
 
+  calendar.method(ICalCalendarMethod.REQUEST);
+
   const event = calendar.createEvent({
     start: start.toJSDate(),
     end: end.toJSDate(),
@@ -40,13 +42,13 @@ export function createICSEvent({ appointment, service, staff, location }: ICSEve
       name: 'Salon Excellence',
       email: process.env.RESEND_FROM_EMAIL ?? 'salon@salon-excellence.ch',
     },
-    method: 'REQUEST',
-    uid: `${appointment.id}@salon-excellence.ch`,
   });
 
+  event.uid(`${appointment.id}@salon-excellence.ch`);
+
   event.createAlarm({
-    type: 'display',
-    trigger: -24 * 60, // 24 hours before
+    type: ICalAlarmType.display,
+    trigger: -24 * 60 * 60, // 24 hours before
     description: 'Erinnerung: Dein Termin bei Salon Excellence steht an.',
   });
 

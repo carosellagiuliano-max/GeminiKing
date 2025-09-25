@@ -1,4 +1,4 @@
-import { DateTime } from './datetime';
+import { DateTime, toISODateOrThrow } from './datetime';
 
 function easterSunday(year: number) {
   const f = Math.floor;
@@ -14,7 +14,7 @@ function easterSunday(year: number) {
 }
 
 function iso(date: DateTime) {
-  return date.toISODate();
+  return toISODateOrThrow(date);
 }
 
 export function getCantonHolidaysBetween(

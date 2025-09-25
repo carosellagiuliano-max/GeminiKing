@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { formatCurrencyCHF } from '@/lib/datetime';
+import type { StaffRow } from '@/lib/supabase/types';
 
 export const metadata: Metadata = {
   title: 'Admin',
@@ -18,7 +19,7 @@ export default async function AdminPage() {
     redirect('/login?redirectTo=/admin');
   }
 
-  const [{ data: services = [] }, { data: staff = [] }, { data: pendingAppointments = [] }] = await Promise.all([
+  const [servicesResult, staffResult, pendingResult] = await Promise.all([
     supabase.from('services').select('*').order('name', { ascending: true }),
     supabase.from('staff').select('*, location:locations(name)').order('display_name', { ascending: true }),
     supabase
@@ -27,6 +28,48 @@ export default async function AdminPage() {
       .eq('status', 'PENDING')
       .order('start_at', { ascending: true }),
   ]);
+
+  if (servicesResult.error) {
+    throw new Error('Services konnten nicht geladen werden.');
+  }
+
+  if (staffResult.error) {
+    throw new Error('Teamdaten konnten nicht geladen werden.');
+  }
+
+  if (pendingResult.error) {
+    throw new Error('Offene Termine konnten nicht geladen werden.');
+  }
+
+  const services = servicesResult.data ?? [];
+  type StaffWithLocation = StaffRow & { location: { name: string } | { name: string }[] | null };
+  const staff = (staffResult.data ?? []) as StaffWithLocation[];
+  type PendingAppointment = {
+    id: string;
+    start_at: string;
+    service: { name: string } | { name: string }[] | null;
+    customer: { email: string } | { email: string }[] | null;
+  };
+  const pendingAppointments = (pendingResult.data ?? []) as PendingAppointment[];
+
+  const staffCards = staff.map((member) => ({
+    id: member.id,
+    displayName: member.display_name,
+    locationName: Array.isArray(member.location)
+      ? member.location[0]?.name ?? 'Unbekannter Standort'
+      : member.location?.name ?? 'Unbekannter Standort',
+  }));
+
+  const pendingView = pendingAppointments.map((appointment) => ({
+    id: appointment.id,
+    startAt: appointment.start_at,
+    serviceName: Array.isArray(appointment.service)
+      ? appointment.service[0]?.name ?? 'Service unbekannt'
+      : appointment.service?.name ?? 'Service unbekannt',
+    customerEmail: Array.isArray(appointment.customer)
+      ? appointment.customer[0]?.email ?? 'Unbekannte E-Mail'
+      : appointment.customer?.email ?? 'Unbekannte E-Mail',
+  }));
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-16 sm:px-6 lg:px-8">
@@ -42,11 +85,11 @@ export default async function AdminPage() {
         </div>
         <div className="rounded-lg border border-neutral-200 bg-white p-5 shadow-sm">
           <p className="text-sm font-semibold text-neutral-500">Teammitglieder</p>
-          <p className="mt-2 text-3xl font-bold text-neutral-900">{staff.length}</p>
+          <p className="mt-2 text-3xl font-bold text-neutral-900">{staffCards.length}</p>
         </div>
         <div className="rounded-lg border border-neutral-200 bg-white p-5 shadow-sm">
           <p className="text-sm font-semibold text-neutral-500">Offene Bestätigungen</p>
-          <p className="mt-2 text-3xl font-bold text-neutral-900">{pendingAppointments.length}</p>
+          <p className="mt-2 text-3xl font-bold text-neutral-900">{pendingView.length}</p>
         </div>
       </section>
 
@@ -87,10 +130,10 @@ export default async function AdminPage() {
       <section className="mt-12 space-y-4">
         <h2 className="text-xl font-semibold text-neutral-900">Team</h2>
         <ul className="grid gap-4 md:grid-cols-2">
-          {staff.map((member) => (
+          {staffCards.map((member) => (
             <li key={member.id} className="rounded-lg border border-neutral-200 bg-white p-4 shadow-sm">
-              <p className="text-lg font-semibold text-neutral-900">{member.display_name}</p>
-              <p className="text-sm text-neutral-600">Standort: {member.location?.name}</p>
+              <p className="text-lg font-semibold text-neutral-900">{member.displayName}</p>
+              <p className="text-sm text-neutral-600">Standort: {member.locationName}</p>
             </li>
           ))}
         </ul>
@@ -98,16 +141,16 @@ export default async function AdminPage() {
 
       <section className="mt-12 space-y-4">
         <h2 className="text-xl font-semibold text-neutral-900">Offene Buchungen</h2>
-        {pendingAppointments.length === 0 ? (
+        {pendingView.length === 0 ? (
           <p className="text-sm text-neutral-500">Keine offenen Bestätigungen.</p>
         ) : (
           <ul className="space-y-3">
-            {pendingAppointments.map((appointment) => (
+            {pendingView.map((appointment) => (
               <li key={appointment.id} className="rounded-lg border border-amber-200 bg-amber-50 p-4">
-                <p className="text-sm font-semibold text-neutral-800">{appointment.service?.name}</p>
-                <p className="text-sm text-neutral-600">{appointment.customer?.email}</p>
+                <p className="text-sm font-semibold text-neutral-800">{appointment.serviceName}</p>
+                <p className="text-sm text-neutral-600">{appointment.customerEmail}</p>
                 <p className="text-sm text-neutral-600">
-                  {new Date(appointment.start_at).toLocaleString('de-CH', { dateStyle: 'short', timeStyle: 'short' })}
+                  {new Date(appointment.startAt).toLocaleString('de-CH', { dateStyle: 'short', timeStyle: 'short' })}
                 </p>
               </li>
             ))}

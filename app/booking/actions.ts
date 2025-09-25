@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import Stripe from 'stripe';
 import { z } from 'zod';
-import { DateTime } from '@/lib/datetime';
+import { DateTime, toISOStringOrThrow } from '@/lib/datetime';
 import { createSupabaseServiceRoleClient } from '@/lib/supabase/server';
 import type {
   AppointmentResourceRow,
@@ -83,7 +83,7 @@ async function createStripeCheckout(
   appointment: AppointmentRow,
   service: ServicesRow,
   customer: z.infer<typeof bookingSchema>['customer'],
-) {
+): Promise<string> {
   const secretKey = process.env.STRIPE_SECRET_KEY;
   if (!secretKey) {
     throw new Error('STRIPE_SECRET_KEY ist nicht gesetzt.');
@@ -125,6 +125,10 @@ async function createStripeCheckout(
     },
   );
 
+  if (!session.url) {
+    throw new Error('Stripe Checkout URL konnte nicht erzeugt werden.');
+  }
+
   return session.url;
 }
 
@@ -132,7 +136,7 @@ async function createSumUpCheckout(
   appointment: AppointmentRow,
   service: ServicesRow,
   customer: z.infer<typeof bookingSchema>['customer'],
-) {
+): Promise<{ id: string; url: string }> {
   const merchantCode = process.env.SUMUP_MERCHANT_CODE;
   const redirectUrl = process.env.SUMUP_REDIRECT_URL ?? `${getSiteUrl()}/api/sumup/return`;
 
@@ -149,7 +153,7 @@ async function createSumUpCheckout(
     merchantCode,
   });
 
-  return checkout.checkout_url;
+  return { id: checkout.checkout_id, url: checkout.checkout_url };
 }
 
 async function persistAppointmentResources(
@@ -184,12 +188,16 @@ export async function createBooking(input: z.infer<typeof bookingSchema>): Promi
     throw new Error('Service konnte nicht geladen werden.');
   }
 
-  const { data: staffOverride } = await supabase
+  const { data: staffOverride, error: staffOverrideError } = await supabase
     .from('staff_services')
     .select('*')
     .eq('service_id', payload.serviceId)
     .eq('staff_id', payload.staffId)
     .maybeSingle();
+
+  if (staffOverrideError) {
+    throw new Error('Service-Verfügbarkeit konnte nicht geprüft werden.');
+  }
 
   const { data: staffMember, error: staffError } = await supabase
     .from('staff')
@@ -201,20 +209,26 @@ export async function createBooking(input: z.infer<typeof bookingSchema>): Promi
     throw new Error('Teammitglied konnte nicht gefunden werden.');
   }
 
-  const { data: location } = await supabase
+  const { data: location, error: locationError } = await supabase
     .from('locations')
     .select('*')
     .eq('id', staffMember.location_id)
     .single();
 
-  if (!location) {
+  if (locationError || !location) {
     throw new Error('Standort nicht gefunden.');
   }
 
-  const { data: serviceResources = [] } = await supabase
+  const { data: serviceResourcesData, error: serviceResourcesError } = await supabase
     .from('service_resources')
     .select('*')
     .eq('service_id', payload.serviceId);
+
+  if (serviceResourcesError) {
+    throw new Error('Service-Ressourcen konnten nicht geladen werden.');
+  }
+
+  const serviceResources = serviceResourcesData ?? [];
 
   const from = DateTime.fromISO(payload.slotStart, { zone: location.timezone });
   const durationMinutes = staffOverride?.duration_minutes ?? service.duration_minutes;
@@ -222,6 +236,8 @@ export async function createBooking(input: z.infer<typeof bookingSchema>): Promi
   const bufferAfter = staffOverride?.buffer_after_minutes ?? service.buffer_after_minutes;
   const start = from.toUTC();
   const end = start.plus({ minutes: durationMinutes });
+  const startIso = toISOStringOrThrow(start);
+  const endIso = toISOStringOrThrow(end);
 
   const appointmentPublicId = nanoid(10);
   const customerId = await ensureCustomer(supabase, payload.customer);
@@ -234,8 +250,8 @@ export async function createBooking(input: z.infer<typeof bookingSchema>): Promi
       customer_id: customerId,
       location_id: staffMember.location_id,
       service_id: payload.serviceId,
-      start_at: start.toISO(),
-      end_at: end.toISO(),
+      start_at: startIso,
+      end_at: endIso,
       status: 'PENDING',
       payment_status: payload.paymentMethod === 'stripe' ? 'UNPAID' : 'UNPAID',
       total_amount_chf: staffOverride?.price_chf ?? service.price_chf,
@@ -253,10 +269,10 @@ export async function createBooking(input: z.infer<typeof bookingSchema>): Promi
     throw new Error('Termin konnte nicht gespeichert werden.');
   }
 
-  await persistAppointmentResources(supabase, appointment.id, serviceResources as ServiceResourceRow[]);
+  await persistAppointmentResources(supabase, appointment.id, serviceResources);
 
   let stripeCheckoutUrl: string | undefined;
-  let sumupCheckoutUrl: string | undefined;
+  let sumupCheckout: { id: string; url: string } | undefined;
 
   if (payload.paymentMethod === 'stripe') {
     stripeCheckoutUrl = await createStripeCheckout(appointment, service, payload.customer);
@@ -265,10 +281,10 @@ export async function createBooking(input: z.infer<typeof bookingSchema>): Promi
       .update({ stripe_checkout_id: stripeCheckoutUrl })
       .eq('id', appointment.id);
   } else {
-    sumupCheckoutUrl = await createSumUpCheckout(appointment, service, payload.customer);
+    sumupCheckout = await createSumUpCheckout(appointment, service, payload.customer);
     await supabase
       .from('appointments')
-      .update({ sumup_checkout_id: sumupCheckoutUrl })
+      .update({ sumup_checkout_id: sumupCheckout.id })
       .eq('id', appointment.id);
   }
 
@@ -283,11 +299,15 @@ export async function createBooking(input: z.infer<typeof bookingSchema>): Promi
 
   revalidatePath('/portal');
 
+  const normalizedStatus: BookingResult['status'] = appointment.status === 'CONFIRMED' ? 'CONFIRMED' : 'PENDING';
+  const normalizedPaymentStatus: BookingResult['paymentStatus'] =
+    appointment.payment_status === 'PAID' ? 'PAID' : 'UNPAID';
+
   return {
     appointmentId: appointment.id,
-    status: appointment.status,
-    paymentStatus: appointment.payment_status,
+    status: normalizedStatus,
+    paymentStatus: normalizedPaymentStatus,
     stripeCheckoutUrl,
-    sumupCheckoutUrl,
+    sumupCheckoutUrl: sumupCheckout?.url,
   };
 }

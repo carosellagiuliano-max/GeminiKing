@@ -7,21 +7,25 @@ const PAID_STATES = ['PAID', 'SETTLED', 'SUCCESSFUL'];
 
 export const handler: Handler = async () => {
   const supabase = createServiceClient();
-  const { data: appointments = [], error } = await supabase
+  const { data: appointments, error: appointmentsError } = await supabase
     .from('appointments')
     .select('id, sumup_checkout_id, payment_status, status, confirmed_at')
     .not('sumup_checkout_id', 'is', null)
     .eq('payment_status', 'UNPAID');
 
-  if (error) {
-    console.error('Failed to load SumUp appointments', error);
+  if (appointmentsError) {
+    console.error('Failed to load SumUp appointments', appointmentsError);
     return { statusCode: 500, body: JSON.stringify({ message: 'Failed to load appointments' }) };
   }
 
+  const appointmentRows = appointments ?? [];
+
   let reconciled = 0;
 
-  for (const appointment of appointments) {
-    if (!appointment.sumup_checkout_id) continue;
+  for (const appointment of appointmentRows) {
+    if (!appointment.sumup_checkout_id) {
+      continue;
+    }
     try {
       const checkout = await fetchSumUpCheckout(appointment.sumup_checkout_id);
       if (PAID_STATES.includes(checkout.status.toUpperCase())) {
