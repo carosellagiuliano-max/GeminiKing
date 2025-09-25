@@ -31,19 +31,61 @@ export const handler: Handler = async (event) => {
   const supabase = createServiceClient();
 
   try {
+    const { data: existingLog } = await supabase
+      .from('webhook_logs')
+      .select('id, status')
+      .eq('provider', 'stripe')
+      .eq('event_id', stripeEvent.id)
+      .maybeSingle();
+
+    if (existingLog?.status === 'success') {
+      return { statusCode: 200, body: 'duplicate' };
+    }
+
+    await supabase
+      .from('webhook_logs')
+      .upsert(
+        {
+          provider: 'stripe',
+          event_id: stripeEvent.id,
+          event_type: stripeEvent.type,
+          status: 'received',
+          payload: stripeEvent as unknown as Record<string, unknown>,
+        },
+        { onConflict: 'provider,event_id' },
+      );
+
     switch (stripeEvent.type) {
       case 'checkout.session.completed': {
         const session = stripeEvent.data.object as Stripe.Checkout.Session;
-        const appointmentId = session.metadata?.appointmentId;
-        if (!appointmentId) break;
+        const appointmentIdFromMetadata = session.metadata?.appointmentId ?? null;
 
-        const { data: existing } = await supabase
+        const { data: appointmentByCheckout } = await supabase
           .from('appointments')
           .select('id, status, payment_status, confirmed_at')
-          .eq('id', appointmentId)
+          .eq('stripe_checkout_id', session.id)
           .maybeSingle();
 
-        if (existing && existing.status === 'CONFIRMED' && existing.payment_status === 'PAID') {
+        const { data: appointmentById } =
+          !appointmentByCheckout && appointmentIdFromMetadata
+            ? await supabase
+                .from('appointments')
+                .select('id, status, payment_status, confirmed_at')
+                .eq('id', appointmentIdFromMetadata)
+                .maybeSingle()
+            : { data: null };
+
+        const appointment = appointmentByCheckout ?? appointmentById;
+
+        if (!appointment?.id) {
+          console.warn('Stripe webhook without matching appointment', {
+            appointmentIdFromMetadata,
+            stripeCheckoutId: session.id,
+          });
+          break;
+        }
+
+        if (appointment.status === 'CONFIRMED' && appointment.payment_status === 'PAID') {
           break;
         }
 
@@ -54,23 +96,15 @@ export const handler: Handler = async (event) => {
             status: 'CONFIRMED',
             stripe_checkout_id: session.id,
             stripe_payment_intent_id: session.payment_intent?.toString() ?? null,
-            confirmed_at: existing?.confirmed_at ?? new Date().toISOString(),
+            confirmed_at: appointment.confirmed_at ?? new Date().toISOString(),
           })
-          .eq('id', appointmentId);
+          .eq('id', appointment.id);
 
         if (updateError) {
           throw updateError;
         }
 
-        await sendAppointmentConfirmationEmail(appointmentId);
-
-        await supabase.from('webhook_logs').insert({
-          provider: 'stripe',
-          event_id: stripeEvent.id,
-          event_type: stripeEvent.type,
-          status: 'success',
-          payload: session as unknown as Record<string, unknown>,
-        });
+        await sendAppointmentConfirmationEmail(appointment.id);
         break;
       }
       case 'payment_intent.payment_failed': {
@@ -84,14 +118,6 @@ export const handler: Handler = async (event) => {
             payment_status: 'UNPAID',
           })
           .eq('id', appointmentId);
-
-        await supabase.from('webhook_logs').insert({
-          provider: 'stripe',
-          event_id: stripeEvent.id,
-          event_type: stripeEvent.type,
-          status: 'error',
-          payload: paymentIntent as unknown as Record<string, unknown>,
-        });
         break;
       }
       default:
@@ -99,15 +125,33 @@ export const handler: Handler = async (event) => {
     }
   } catch (error) {
     console.error('Stripe webhook processing failed', error);
-    await supabase.from('webhook_logs').insert({
-      provider: 'stripe',
-      event_id: stripeEvent.id,
-      event_type: stripeEvent.type,
-      status: 'error',
-      payload: { message: String(error) },
-    });
-    return { statusCode: 500, body: 'Webhook error' };
+    await supabase
+      .from('webhook_logs')
+      .upsert(
+        {
+          provider: 'stripe',
+          event_id: stripeEvent.id,
+          event_type: stripeEvent.type,
+          status: 'error',
+          payload: { message: String(error) },
+        },
+        { onConflict: 'provider,event_id' },
+      );
+    return { statusCode: 200, body: 'error' };
   }
+
+  await supabase
+    .from('webhook_logs')
+    .upsert(
+      {
+        provider: 'stripe',
+        event_id: stripeEvent.id,
+        event_type: stripeEvent.type,
+        status: 'success',
+        payload: stripeEvent as unknown as Record<string, unknown>,
+      },
+      { onConflict: 'provider,event_id' },
+    );
 
   return { statusCode: 200, body: 'ok' };
 };

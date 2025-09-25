@@ -31,6 +31,33 @@ async function ensureClient() {
   return { resend: new Resend(apiKey), from };
 }
 
+function buildComplianceHeaders() {
+  const mailto = process.env.RESEND_LIST_UNSUBSCRIBE_MAILTO?.trim();
+  const url = process.env.RESEND_LIST_UNSUBSCRIBE_URL?.trim();
+
+  const entries: string[] = [];
+  if (mailto) {
+    entries.push(`<mailto:${mailto}>`);
+  }
+  if (url) {
+    entries.push(`<${url}>`);
+  }
+
+  if (entries.length === 0) {
+    return undefined;
+  }
+
+  const headers: Record<string, string> = {
+    'List-Unsubscribe': entries.join(', '),
+  };
+
+  if (url) {
+    headers['List-Unsubscribe-Post'] = 'List-Unsubscribe=One-Click';
+  }
+
+  return headers;
+}
+
 export async function sendBookingConfirmation({
   appointment,
   service,
@@ -64,6 +91,7 @@ export async function sendBookingConfirmation({
     to: customer.email,
     subject: `Termin bestätigt: ${service.name} am ${start.toFormat('dd.LL.yyyy HH:mm')}`,
     html,
+    headers: buildComplianceHeaders(),
     attachments: [
       {
         filename: ics.filename,
@@ -138,6 +166,7 @@ export async function sendReminderEmail({ appointment, service, staff, customer,
     to: customer.email,
     subject: `Reminder: ${service.name} am ${start.toFormat('dd.LL.yyyy HH:mm')}`,
     html,
+    headers: buildComplianceHeaders(),
   });
 }
 

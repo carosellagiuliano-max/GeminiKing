@@ -13,14 +13,31 @@ export const handler: Handler = async (event) => {
   }
 
   try {
+    const { data: existingLog } = await supabase
+      .from('webhook_logs')
+      .select('id, status')
+      .eq('provider', 'sumup')
+      .eq('event_id', checkoutId)
+      .maybeSingle();
+
+    if (existingLog?.status === 'success') {
+      return { statusCode: 200, body: JSON.stringify({ message: 'duplicate' }) };
+    }
+
     const checkout = await fetchSumUpCheckout(checkoutId);
-    await supabase.from('webhook_logs').insert({
-      provider: 'sumup',
-      event_id: checkout.id,
-      event_type: 'checkout.webhook',
-      status: 'success',
-      payload: checkout as unknown as Record<string, unknown>,
-    });
+
+    await supabase
+      .from('webhook_logs')
+      .upsert(
+        {
+          provider: 'sumup',
+          event_id: checkout.id,
+          event_type: 'checkout.webhook',
+          status: 'received',
+          payload: checkout as unknown as Record<string, unknown>,
+        },
+        { onConflict: 'provider,event_id' },
+      );
 
     if (['PAID', 'SETTLED', 'SUCCESSFUL'].includes(checkout.status.toUpperCase())) {
       const { data: appointment } = await supabase
@@ -47,16 +64,34 @@ export const handler: Handler = async (event) => {
       }
     }
 
+    await supabase
+      .from('webhook_logs')
+      .upsert(
+        {
+          provider: 'sumup',
+          event_id: checkoutId,
+          event_type: 'checkout.webhook',
+          status: 'success',
+          payload: checkout as unknown as Record<string, unknown>,
+        },
+        { onConflict: 'provider,event_id' },
+      );
+
     return { statusCode: 200, body: JSON.stringify({ message: 'ok' }) };
   } catch (error) {
     console.error('SumUp webhook failed', error);
-    await supabase.from('webhook_logs').insert({
-      provider: 'sumup',
-      event_id: checkoutId,
-      event_type: 'checkout.webhook',
-      status: 'error',
-      payload: { message: String(error) },
-    });
-    return { statusCode: 500, body: JSON.stringify({ message: 'error' }) };
+    await supabase
+      .from('webhook_logs')
+      .upsert(
+        {
+          provider: 'sumup',
+          event_id: checkoutId,
+          event_type: 'checkout.webhook',
+          status: 'error',
+          payload: { message: String(error) },
+        },
+        { onConflict: 'provider,event_id' },
+      );
+    return { statusCode: 200, body: JSON.stringify({ message: 'error' }) };
   }
 };

@@ -44,25 +44,35 @@ export const handler: Handler = async () => {
 
         await sendAppointmentConfirmationEmail(appointment.id);
 
-        await supabase.from('webhook_logs').insert({
-          provider: 'sumup',
-          event_id: checkout.id,
-          event_type: 'checkout.reconciled',
-          status: 'success',
-          payload: checkout as unknown as Record<string, unknown>,
-        });
+        await supabase
+          .from('webhook_logs')
+          .upsert(
+            {
+              provider: 'sumup',
+              event_id: checkout.id,
+              event_type: 'checkout.reconciled',
+              status: 'success',
+              payload: checkout as unknown as Record<string, unknown>,
+            },
+            { onConflict: 'provider,event_id' },
+          );
 
         reconciled += 1;
       }
     } catch (reconcileError) {
       console.error('Failed to reconcile SumUp checkout', appointment.sumup_checkout_id, reconcileError);
-      await supabase.from('webhook_logs').insert({
-        provider: 'sumup',
-        event_id: appointment.sumup_checkout_id,
-        event_type: 'checkout.reconcile_failed',
-        status: 'error',
-        payload: { message: String(reconcileError) },
-      });
+      await supabase
+        .from('webhook_logs')
+        .upsert(
+          {
+            provider: 'sumup',
+            event_id: appointment.sumup_checkout_id,
+            event_type: 'checkout.reconcile_failed',
+            status: 'error',
+            payload: { message: String(reconcileError) },
+          },
+          { onConflict: 'provider,event_id' },
+        );
     }
   }
 
